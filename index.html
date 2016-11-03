@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Proyecto</title>
+	</head>
+	<body onload="startDB(); ">
+	<h1>Esta es una prueba de workers!</h1>
+		<span id="output"></span><br>
+		<span id="date"></span><br>
+		<span id="coordenadas"></span><br>
+		<p id="Resultado"></p>
+        <button type="button" onclick="add();">Guardar</button>
+                <hr>
+        <div id="elements">
+            <button type="button" onclick="loadAllByNombre();">Order by name</button>
+            <table>
+                <caption>Pacientes</caption>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Pulso cardíaco</th>
+                        <th>Latitud</th>
+                        <th>Longitud</th>
+                        <th>Fecha</th>
+
+                        <th> </th>
+                    </tr>
+                </thead>
+                <tbody id="elementsList">
+                    <tr>
+                        <td colspan="3">Not elements to show</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+
+		<script type="text/javascript">
+		var nombre="Leonel";
+		var x = document.getElementById("coordenadas");
+		var lat , lon;
+		var pulse, pulso,resp,num, respon;
+		var worker_pulso, worker;
+		var latitud=0, longitud=0;
+		var indexdb="indice";
+        var pacienteData;
+        var fech;
+        var datos;
+        var elements = [],indice =[];
+        var inicio = new Array();
+        var fin;
+
+        var indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+
+
+        //Llamada a workerPulso para extraer la frecuencia
+				worker_pulso = new Worker ('workerPulso.js');
+				worker_pulso.onmessage = function(event){
+				 pulse = event.data;
+				console.log('respuesta pulso '+pulse);
+				document.getElementById("Resultado").innerHTML=pulse;
+				console.log('pulso '+pulse)
+				pulso = pulse;
+                    obtenerDatos();
+
+			}
+        //Obtiene datos de geolocalización
+		function obtenerDatos(){
+		    if (navigator.geolocation) {
+		        navigator.geolocation.getCurrentPosition(showPosition);
+		    } else {
+		        x.innerHTML = "Geolocation is not supported by this browser.";
+		    }
+		}
+        //Obtiene las coordenadas de latitud y longitud
+		function showPosition(position) {
+			lat = position.coords.latitude;
+			lon = position.coords.longitude;
+		    x.innerHTML = "Latitud: " + lat + "<br>Longitud: " + lon;
+			enviaDato();
+		}
+        //Muestra los errores al obtener la localización
+		function showError(error) {
+    		switch(error.code) {
+        		case error.PERMISSION_DENIED:
+            		x.innerHTML = "User denied the request for Geolocation."
+            		break;
+        		case error.POSITION_UNAVAILABLE:
+            		x.innerHTML = "Location information is unavailable."
+            		break;
+        		case error.TIMEOUT:
+            		x.innerHTML = "The request to get user location timed out."
+            		break;
+        		case error.UNKNOWN_ERROR:
+            		x.innerHTML = "An unknown error occurred."
+            		break;
+    		}
+		}
+        //Genera la información en un JSON para poder guardarlo en indexedDB
+		function enviaDato() {
+
+			//Prepara fecha
+            console.log('Envie datos!!!')
+			var hoy = new Date();
+			var dd = hoy.getDate();
+			var mm = hoy.getMonth()+1; //hoy es 0!
+			var yyyy = hoy.getFullYear();
+			var hh = hoy.getHours();
+			var min = hoy.getMinutes();
+			var sec = hoy.getSeconds();
+
+			if(dd<10) {
+	    		dd='0'+dd
+			}
+
+			if(mm<10) {
+
+	    		mm='0'+mm
+			}
+			hoy = mm+'/'+dd+'/'+yyyy+" "+hh+":"+min+":"+sec;
+			document.getElementById("date").innerHTML=hoy;
+            fech=hoy;
+				//Llamada a workerBDCliente para almacenar datos en localstorage
+			/* worker = new Worker ('workerBD.js');
+			worker.onmessage = function(event){
+				 respon = event.data;
+				document.getElementById("output").innerHTML="Status: "+respon;
+				console.log('latitud and longitud: '+lat+" "+lon);
+			};
+			*/
+
+			//worker.postMessage(pacienteData);
+            pacienteData =
+                { indice: indexdb,
+                 name: nombre,
+                 pulso: pulso,
+                 latitud: lat,
+                 longitud: lon,
+                 fecha: fech
+                }
+
+            add();
+		}
+
+		/*var work = new Worker('workerEnvio.js');
+		work.addEventListener('message', function (eve) {
+
+		},false);
+
+		work.postMessage(pacienteData);
+		setTimeout("enviaDato()",2000)*/
+
+
+
+    //Creación y llamada a base de datos de IndexedDB
+    function startDB(){
+    dataBase = indexedDB.open("sensHealth",1);
+
+    dataBase.onupgradeneeded = function(event){
+    active = dataBase.result;
+    db =dataBase.result;
+    console.log('active: '+active);
+    object = active.createObjectStore("paciente",{keypath:'id',autoIncrement:true});
+
+    object.createIndex("by_nombre", "nombre",   { unique: false });
+    object.createIndex("by_pulso", "pulso",     { unique: false });
+    object.createIndex("by_latitud", "latitud", { unique: false });
+    object.createIndex("by_longitud", "longitud", { unique: false });
+    object.createIndex("by_fecha", "fecha",     { unique: false });
+
+        };
+
+    dataBase.onsuccess = function(event){
+        console.log('Base de datos cargada correctamente');
+        loadAll();
+
+    };
+
+    dataBase.onError = function(event){
+        console.log('Error al cargar la base de datos');
+    };
+
+}
+
+function add(){
+
+   // console.log('add(): '+JSON.stringify(pacienteData));
+
+     active = dataBase.result;
+    var data = active.transaction(["paciente"],"readwrite");
+    var object = data.objectStore("paciente");
+
+    var request = object.put({
+        id: object.id,
+        nombre: pacienteData.name,
+        pulso: pacienteData.pulso,
+        latitud: pacienteData.latitud,
+        longitud: pacienteData.longitud,
+        fecha: pacienteData.fecha
+    });
+
+        request.onerror = function(event){
+            console.log(request.error.name + '\n\n' + request.error.message);
+        }
+
+        request.oncomplete = function(event){
+
+            console.log('Objeto agregado correctamente');
+            loadAll();
+        }
+    }
+            //Script worker para mandar datos a servidor
+
+          /*
+			var work = new Worker('worker.js');
+			work.addEventListener('message', function (eve) {
+
+			},false);
+
+
+
+			work.postMessage(datos);
+			setTimeout("envioDatos()",5000)
+            */
+
+            //Script para obtener la información de la base de datos de IndexedDB
+        /*                function load(id) {
+                var active = dataBase.result;
+                var data = active.transaction(["paciente"], "readonly");
+                var object = data.objectStore("paciente");
+
+                var request = object.get(parseInt(id));
+
+                request.onsuccess = function () {
+                    var result = request.result;
+
+                    if (result !== undefined) {
+                        alert("ID: " + result.key + "\n\
+                               nombre " + result.nombre + "\n\
+                               pulso: " + result.pulso + "\n\
+                               latitud " + result.latitud+ "\n\
+                               longitud: " + result.longitud + "\n\
+                               fecha: " + result.fecha);
+                    }
+                };
+            }
+
+            function loadByNombre(nombre) {
+                var active = dataBase.result;
+                var data = active.transaction(["paciente"], "readonly");
+                var object = data.objectStore("paciente");
+                var index = object.index("by_nombre");
+                var request = index.get(String(nombre));
+
+                request.onsuccess = function () {
+                    var result = request.result;
+                    console.log('result: '+result);
+                    if (result !== undefined) {
+                        alert("ID: " + result.id + "\n\
+                               nombre: " + result.nombre + "\n\
+                               pulso: " + result.pulso + "\n\
+                               latitud " + result.latitud+ "\n\
+                               longitud: " + result.longitud + "\n\
+                               fecha: " + result.fecha);
+                    }
+                };
+            }
+            */
+
+            function loadAll() {
+                var active = dataBase.result;
+                var data = active.transaction(["paciente"], "readonly");
+                var object = data.objectStore("paciente");
+                var work = new Worker('worker.js');
+                 elements = [];
+
+                object.openCursor().onsuccess = function (e) {
+
+                    var result = e.target.result;
+
+                    if (result === null) {
+                        console.log('entre al if')
+                        return;
+                    }
+                    indice.push(parseInt(result.key));
+                    //inicio[indice.length-1] = parseInt(result.key);
+                    inicio.push(result.key);
+                    console.log('inicio: '+inicio[0]+'  fin: '+inicio);
+                    console.log('value: '+parseInt(result.key));
+                    fin = parseInt(result.key);
+                    elements.push(result.value);
+                    result.continue();
+
+                };
+
+                data.oncomplete = function () {
+
+                    var outerHTML = '';
+
+                    for (var key in elements) {
+
+                        var datos = JSON.stringify({cliente: elements[key].nombre,
+											  frecuencia:    elements[key].pulso,
+											  posicion:{lat:   elements[key].latitud,
+                                                        lon:   elements[key].longitud},
+                                              fechalocal:    elements[key].fecha
+			             });
+
+                        work.postMessage(datos);
+console.log('Dato[ '+key+' ]: '+' '+elements[key].nombre+' '+elements[key].pulso+' '+elements[key].latitud+
+           ' '+elements[key].longitud+' '+elements[key].fecha);
+                        outerHTML += '\n\
+                        <tr>\n\
+                            <td>' + elements[key].nombre + '</td>\n\
+                            <td>' + elements[key].pulso + '</td>\n\
+                            <td>' + elements[key].latitud + '</td>\n\
+                            <td>' + elements[key].longitud + '</td>\n\
+                            <td>' + elements[key].fecha + '</td>\n\
+                            </tr>';
+
+
+
+                    }
+
+                    work.addEventListener('message', function (eve) {
+
+			},false);
+
+
+            console.log('datos: '+datos)
+
+
+
+                    /*
+                     <button type="button" onclick="load(' + elements[key].id + ')">Details</button>\n\
+                                <button type="button" onclick="loadByNombre(' + elements[key].nombre + ')">Details
+                    */
+
+
+                    document.querySelector("#elementsList").innerHTML = outerHTML;
+                };
+
+
+            }
+
+            function envioDatos(){
+
+
+
+            }
+
+            ///////////////////////////////////////////////////////////
+
+
+            function deleteData() {
+  // open a read/write db transaction, ready for deleting the data
+                console.log('elements: '+elements.length);
+
+  var transaction = active.transaction(["paciente"], "readwrite");
+
+
+
+
+  transaction.onerror = function(event) {
+      console.log('Transaction not opened due to error: ' + transaction.error)
+  };
+
+  // create an object store on the transaction
+  var objectStore = transaction.objectStore("paciente");
+                console.log('inicio: '+inicio[0]+' elements: '+elements.length);
+
+    /*for (var i = inicio[0]-2; i <fin; i++) {
+
+    }*/
+            for(var i in elements){
+                 console.log('inicio    '+i+'  fin:           '+elements.length)
+               var objectStoreRequest = objectStore.delete(inicio[i]);
+                      objectStoreRequest.onsuccess = function(event) {
+                    // report the success of our delete operation
+                      console.log('REcord deleted')
+  };
+            }
+
+  // Delete the specified record out of the object store
+      // report on the success of opening the transaction
+  transaction.oncomplete = function(event) {
+
+      console.log('Transaction completed: database modification finished.')
+  };
+
+
+
+            }
+
+            /*
+            function loadAllByNombre() {
+                var active = dataBase.result;
+                var data = active.transaction(["paciente"], "readonly");
+                var object = data.objectStore("paciente");
+                var index = object.index("by_pulso");
+
+                var elements = [];
+
+                index.openCursor().onsuccess = function (e) {
+
+                    var result = e.target.result;
+
+                    if (result === null) {
+                        return;
+                    }
+
+                    elements.push(result.value);
+                    result.continue();
+
+                };
+
+                data.oncomplete = function () {
+
+                    var outerHTML = '';
+
+                    for (var key in elements) {
+
+                        outerHTML += '\n\
+                        <tr>\n\
+                            <td>' + elements[key].nombre + '</td>\n\
+                            <td>' + elements[key].pulso + '</td>\n\
+                            <td>' + elements[key].latitud + '</td>\n\
+                            <td>' + elements[key].longitud + '</td>\n\
+                            <td>' + elements[key].fecha + '</td>\n\
+                            <td>\n\ <button type="button" onclick="load(' + elements[key].id + ')">Details</button>\n\
+                <button type="button" onclick="loadByNombre(' + elements[key].nombre + ')">Details Nombre</button>\n\
+                            </td>\n\
+                        </tr>';
+
+                    }
+
+                    elements = [];
+                    document.querySelector("#elementsList").innerHTML = outerHTML;
+                };
+            }
+            */
+
+            //Envia informacion a worker.js
+
+
+
+
+
+
+        </script>
+		<button type="button" onclick="loadAll();">Cargar datos</button>
+        <button type="button" onclick="deleteData();">Borrar</button>
+	</body>
+</html>
